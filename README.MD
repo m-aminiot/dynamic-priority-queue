@@ -10,7 +10,7 @@ A small Python priority queue with five capacity-limited tiers, overflow demotio
 | --- | --- |
 | `dynamic_queue.py` | The `DynamicPriorityQueue` implementation. |
 | `example.py` | A runnable usage example, including 100 items with random priorities. |
-| `tests/test.queue.py` | Unit tests for insertion, queue length, priority selection, empty queues, and overflow demotion. |
+| `tests/test_queue.py` | Unit tests for insertion, queue length, priority selection, empty queues, and overflow demotion. |
 
 ## Requirements
 
@@ -29,7 +29,7 @@ queue.enqueue("Urgent task", priority=5)
 print(len(queue))       # 2
 print(queue.dequeue()) # Urgent task
 print(queue.dequeue()) # Background task
-print(queue.dequeue()) # None
+queue.dequeue()        # raises QueueEmptyEror when the queue is empty
 ```
 
 ## How it works
@@ -52,15 +52,15 @@ Priority **5 is the highest** and **1 is the lowest**. Items within each tier ar
 
 ### Dequeue and promotion
 
-`dequeue()` removes the oldest item from the highest nonempty tier, or returns `None` if the queue is empty.
+`dequeue()` removes the oldest item from the highest nonempty tier. If the queue is empty, it raises `QueueEmptyEror`.
 
 Before each removal, it calculates a threshold using that tier's current length:
 
 ```python
-threshold = max(1, math.ceil(queue_length / 3))
+threshold = max(1, math.ceil(queue_length / 5))
 ```
 
-Each tier has its own removal counter. When the active tier's counter reaches the threshold, the counter resets. If the immediately lower tier contains an item, its oldest item moves to the back of the active tier. The threshold is recalculated on every dequeue; it is not a fixed batch size. Promotion does not skip empty tiers, so it does not guarantee that every lower tier will eventually be served under a continuous higher-priority workload.
+Each tier has its own removal counter. When the active tier's counter reaches the threshold, the counter resets. If the immediately lower tier contains an item, its oldest item moves to the back of the active tier. The threshold is recalculated on every dequeue; it is not a fixed batch size. Dequeue always selects the highest nonempty tier first. Promotion only moves an item up one tier, so a lower-priority item may wait indefinitely while higher-priority work continues; service fairness across all tiers is not guaranteed.
 
 `len(queue)` returns the total number of stored items across all tiers.
 
@@ -88,20 +88,19 @@ It demonstrates enqueueing and dequeueing, then adds and removes 100 items with 
 
 ## Run the tests
 
-`tests/test.queue.py` contains four tests using Python's built-in `unittest` module. On macOS or Linux:
+`tests/test_queue.py` contains four tests using Python's built-in `unittest` module. Run them from the project root:
 
 ```bash
-PYTHONPATH=. python3 tests/test.queue.py
+python3 -m tests.test_queue
 ```
 
 On Windows PowerShell:
 
 ```powershell
-$env:PYTHONPATH = "."
-python tests/test.queue.py
+python -m tests.test_queue
 ```
 
-Setting `PYTHONPATH` makes the root-level module importable from the `tests` directory. Run this file explicitly: its current name, `test.queue.py`, is not suitable for standard `unittest` discovery. A successful run reports `Ran 4 tests` and `OK`.
+The module name matches the test file's underscore naming, and the command works from the project root. A successful run reports `Ran 4 tests` and `OK`.
 
 ## Logging
 
@@ -120,6 +119,6 @@ The `DynamicPriorityQueue` logger emits insertion and removal details at `DEBUG`
 
 ## Usage notes
 
-- The queue has no synchronization for concurrent access.
-- `None` is also the empty-queue return value; avoid storing it if you need to distinguish an item from an empty result.
+- Queue operations use a lock, so individual enqueue and dequeue calls are synchronized across threads.
+- An empty `dequeue()` raises `QueueEmptyEror`; `None` can still be stored as an item and is returned as that payload.
 - The bundled tests cover basic behavior; they do not cover every input or scheduling scenario.
