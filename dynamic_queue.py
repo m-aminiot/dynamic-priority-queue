@@ -18,26 +18,38 @@ class DynamicPriorityQueue:
         self.queues = {i: deque() for i in range(1, 6)}
         self.processed_counters = {i: 0 for i in range(1, 6)}
         self.lock = threading.Lock()
+        self.is_empty = False
+        self.callback_func = None
 
     def enqueue(self, item, priority=5) -> bool:
         """
         Pushes an item into the queue. Demotes to lower priority on overflow.
         """
+        run_func = False
+        callback_func = None
+        enqueued = False
+
         curr_prio = priority
         with self.lock:
             while curr_prio >= 1:
                 if len(self.queues[curr_prio]) < self.capacities[curr_prio]:
                     self.queues[curr_prio].append(item)
+                    enqueued = True
+                    if self.is_empty:
+                        run_func = True
+                        callback_func = self.callback_func
+                        self.is_empty = False
                     logger.debug(f"[ENQUEUE] Item placed in C{curr_prio} (Requested: C{priority})")
-                    return True
+                    break
                 else:
                     logger.warning(f"[OVERFLOW] C{curr_prio} is full. Demoting to C{curr_prio - 1}")
                     curr_prio -= 1
-            
+            if not enqueued:
+                logger.error(f"[DROP] All tiers full. Dropped item: {item}")
 
-
-            logger.error(f"[DROP] All tiers full. Dropped item: {item}")
-            return False
+        if run_func and callback_func is not None:
+            callback_func()
+        return enqueued
 
     def dequeue(self):
         """
@@ -53,6 +65,7 @@ class DynamicPriorityQueue:
                     break
             
             if active_prio is None:
+                self.is_empty = True
                 logger.warning(f"[EMPTY] The queue is empty")
                 raise QueueEmptyEror("The queue is empty")
 
@@ -75,6 +88,16 @@ class DynamicPriorityQueue:
                     logger.info(f"[PROMOTE] Promoted item from C{lower_prio} to C{active_prio}")
 
             return item
+
+    def callback(self, func):
+        """Register a callable other than the queue's enqueue/dequeue methods."""
+        if not callable(func):
+            raise TypeError("callback must be callable")
+        callback_method = getattr(func, "__func__", func)
+        if callback_method in (DynamicPriorityQueue.enqueue, DynamicPriorityQueue.dequeue):
+            raise ValueError("enqueue and dequeue cannot be registered as callbacks")
+        self.callback_func = func
+
 
 
     def __len__(self):
